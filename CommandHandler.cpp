@@ -164,7 +164,7 @@ void CommandHandler::handleJoin(User& user, const std::vector<std::string>& args
         }
     }
     
-    if (channel->getUserLimit() > 0 && channel->getUserCount() >= static_cast<size_t>(channel->getUserLimit())) {
+    if (channel->getUserLimit() > 0 && channel->getUserCount() >= channel->getUserLimit()) {
         user.sendMessage(":server 471 " + channel_name + " :Cannot join channel (+l)");
         return;
     }
@@ -494,8 +494,27 @@ void CommandHandler::handleMode(User& user, const std::vector<std::string>& args
         }
         channel->broadcast(0, mode_msg);
     } else {
-        // User mode (not implemented in this basic version)
-        user.sendMessage(":server 502 :Unknown MODE command");
+        // User mode
+        if (target != user.getNickname()) {
+            user.sendMessage(":server 502 :Cannot change mode for other users");
+            return;
+        }
+        
+        if (args.size() < 2) {
+            // Show current user modes
+            std::stringstream ss;
+            ss << ":" << server.getServerFd() << " 221 " << user.getNickname() << " " << user.getModeFlags();
+            user.sendMessage(ss.str());
+            return;
+        }
+        
+        // Handle user mode changes
+        std::string modes = args[1];
+        user.setModeFlags(modes);
+        
+        // Broadcast mode change
+        std::string mode_msg = ":" + user.getNickname() + " MODE " + target + " " + modes;
+        user.sendMessage(mode_msg);
     }
 }
 
