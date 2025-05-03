@@ -1,9 +1,17 @@
 #include "Channel.hpp"
+#include "User.hpp"
 #include <sys/socket.h>
+#include <sstream>
 
-Channel::Channel(const std::string& name) : name(name), user_limit(0) {}
+Channel::Channel(const std::string& name) : 
+    name(name), 
+    userLimit(0),
+    inviteOnly(false),
+    topicRestricted(false),
+    modeFlags("") {
+}
 
-const std::string& Channel::getName() const {
+std::string Channel::getName() const {
     return name;
 }
 
@@ -11,49 +19,50 @@ const std::set<int>& Channel::getUsers() const {
     return users;
 }
 
-const std::set<int>& Channel::getOperators() const {
-    return operators;
-}
-
-const std::string& Channel::getTopic() const {
+std::string Channel::getTopic() const {
     return topic;
 }
 
-const std::string& Channel::getModeFlags() const {
-    return mode_flags;
+std::string Channel::getModeFlags() const {
+    return modeFlags;
 }
 
-const std::string& Channel::getPassword() const {
+std::string Channel::getPassword() const {
     return password;
 }
 
 int Channel::getUserLimit() const {
-    return user_limit;
+    return userLimit;
 }
 
 void Channel::setTopic(const std::string& new_topic) {
     topic = new_topic;
 }
 
-void Channel::setModeFlags(const std::string& flags) {
-    mode_flags = flags;
+void Channel::setModeFlags(const std::string& modes) {
+    modeFlags = modes;
 }
 
-void Channel::setPassword(const std::string& new_password) {
-    password = new_password;
+void Channel::setPassword(const std::string& pass) {
+    password = pass;
 }
 
 void Channel::setUserLimit(int limit) {
-    user_limit = limit;
+    userLimit = limit;
 }
 
 void Channel::addUser(int fd) {
     users.insert(fd);
+    if (users.size() == 1) {
+        // First user becomes operator
+        addOperator(fd);
+    }
 }
 
 void Channel::removeUser(int fd) {
     users.erase(fd);
-    operators.erase(fd); // Remove from operators if present
+    operators.erase(fd);
+    invited.erase(fd);
 }
 
 bool Channel::hasUser(int fd) const {
@@ -61,9 +70,7 @@ bool Channel::hasUser(int fd) const {
 }
 
 void Channel::addOperator(int fd) {
-    if (hasUser(fd)) {
-        operators.insert(fd);
-    }
+    operators.insert(fd);
 }
 
 void Channel::removeOperator(int fd) {
@@ -74,8 +81,16 @@ bool Channel::isOperator(int fd) const {
     return operators.find(fd) != operators.end();
 }
 
-void Channel::broadcast(int sender_fd, const std::string& message) const {
-    std::set<int>::const_iterator it;
+void Channel::addInvited(int fd) {
+    invited.insert(fd);
+}
+
+bool Channel::isInvited(int fd) const {
+    return invited.find(fd) != invited.end();
+}
+
+void Channel::broadcast(int sender_fd, const std::string& message) {
+    std::set<int>::iterator it;
     for (it = users.begin(); it != users.end(); ++it) {
         if (*it != sender_fd) { // Don't send to the sender
             send(*it, message.c_str(), message.length(), 0);
@@ -85,4 +100,20 @@ void Channel::broadcast(int sender_fd, const std::string& message) const {
 
 size_t Channel::getUserCount() const {
     return users.size();
+}
+
+void Channel::setInviteOnly(bool value) {
+    inviteOnly = value;
+}
+
+bool Channel::isInviteOnly() const {
+    return inviteOnly;
+}
+
+void Channel::setTopicRestricted(bool value) {
+    topicRestricted = value;
+}
+
+bool Channel::isTopicRestricted() const {
+    return topicRestricted;
 } 

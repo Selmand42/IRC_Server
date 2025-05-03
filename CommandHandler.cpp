@@ -151,12 +151,65 @@ void CommandHandler::handleJoin(User& user, const std::vector<std::string>& args
         channel = server.getChannel(channel_name);
     }
     
+    // Check channel modes and restrictions
+    if (channel->isInviteOnly() && !channel->isInvited(user.getFd())) {
+        user.sendMessage(":server 473 " + channel_name + " :Cannot join channel (+i)");
+        return;
+    }
+    
+    if (!channel->getPassword().empty()) {
+        if (args.size() < 2 || args[1] != channel->getPassword()) {
+            user.sendMessage(":server 475 " + channel_name + " :Cannot join channel (+k)");
+            return;
+        }
+    }
+    
+    if (channel->getUserLimit() > 0 && channel->getUserCount() >= static_cast<size_t>(channel->getUserLimit())) {
+        user.sendMessage(":server 471 " + channel_name + " :Cannot join channel (+l)");
+        return;
+    }
+    
     channel->addUser(user.getFd());
     user.joinChannel(channel_name);
     
     // Send join message to all users in the channel
     std::string join_msg = ":" + user.getNickname() + " JOIN :" + channel_name;
     channel->broadcast(user.getFd(), join_msg);
+    
+    // Send channel topic if exists
+    if (!channel->getTopic().empty()) {
+        user.sendMessage(":server 332 " + user.getNickname() + " " + channel_name + " :" + channel->getTopic());
+    }
+    
+    // Send channel mode information
+    std::stringstream ss;
+    ss << ":" << server.getServerFd() << " 324 " << user.getNickname() << " " << channel_name << " " << channel->getModeFlags();
+    if (!channel->getPassword().empty()) {
+        ss << " " << channel->getPassword();
+    }
+    if (channel->getUserLimit() > 0) {
+        ss << " " << channel->getUserLimit();
+    }
+    user.sendMessage(ss.str());
+    
+    // Send list of users in channel
+    ss.str("");
+    ss << ":" << server.getServerFd() << " 353 " << user.getNickname() << " = " << channel_name << " :";
+    const std::set<int>& users = channel->getUsers();
+    std::set<int>::const_iterator it;
+    for (it = users.begin(); it != users.end(); ++it) {
+        User* channel_user = server.getUser(*it);
+        if (channel_user) {
+            if (channel->isOperator(*it)) {
+                ss << "@";
+            }
+            ss << channel_user->getNickname() << " ";
+        }
+    }
+    user.sendMessage(ss.str());
+    
+    // End of names list
+    user.sendMessage(":server 366 " + user.getNickname() + " " + channel_name + " :End of /NAMES list");
 }
 
 void CommandHandler::handlePart(User& user, const std::vector<std::string>& args) {
@@ -350,15 +403,95 @@ void CommandHandler::handleMode(User& user, const std::vector<std::string>& args
             // Show current modes
             std::stringstream ss;
             ss << ":" << server.getServerFd() << " 324 " << user.getNickname() << " " << target << " " << channel->getModeFlags();
+            if (!channel->getPassword().empty()) {
+                ss << " " << channel->getPassword();
+            }
+            if (channel->getUserLimit() > 0) {
+                ss << " " << channel->getUserLimit();
+            }
             user.sendMessage(ss.str());
             return;
         }
         
         // Handle mode changes
         std::string modes = args[1];
-        channel->setModeFlags(modes);
+        bool adding = true;
         
+        for (size_t i = 0; i < modes.length(); ++i) {
+            if (modes[i] == '+') {
+                adding = true;
+                continue;
+            }
+            if (modes[i] == '-') {
+                adding = false;
+                continue;
+            }
+            
+            switch (modes[i]) {
+                case 'i': // Invite-only
+                    channel->setInviteOnly(adding);
+                    break;
+                    
+                case 't': // Topic restriction
+                    channel->setTopicRestricted(adding);
+                    break;
+                    
+                case 'k': // Channel key
+                    if (adding) {
+                        if (args.size() > 2) {
+                            channel->setPassword(args[2]);
+                        } else {
+                            user.sendMessage(":server 461 MODE k :Not enough parameters");
+                            return;
+                        }
+                    } else {
+                        channel->setPassword("");
+                    }
+                    break;
+                    
+                case 'o': // Operator privilege
+                    if (args.size() > 2) {
+                        const std::map<int, User>& users = server.getUsers();
+                        std::map<int, User>::const_iterator it;
+                        for (it = users.begin(); it != users.end(); ++it) {
+                            if (it->second.getNickname() == args[2]) {
+                                if (adding) {
+                                    channel->addOperator(it->first);
+                                } else {
+                                    channel->removeOperator(it->first);
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        user.sendMessage(":server 461 MODE o :Not enough parameters");
+                        return;
+                    }
+                    break;
+                    
+                case 'l': // User limit
+                    if (adding) {
+                        if (args.size() > 2) {
+                            int limit = atoi(args[2].c_str());
+                            if (limit > 0) {
+                                channel->setUserLimit(limit);
+                            }
+                        } else {
+                            user.sendMessage(":server 461 MODE l :Not enough parameters");
+                            return;
+                        }
+                    } else {
+                        channel->setUserLimit(0);
+                    }
+                    break;
+            }
+        }
+        
+        // Broadcast mode change
         std::string mode_msg = ":" + user.getNickname() + " MODE " + target + " " + modes;
+        if (args.size() > 2) {
+            mode_msg += " " + args[2];
+        }
         channel->broadcast(0, mode_msg);
     } else {
         // User mode (not implemented in this basic version)

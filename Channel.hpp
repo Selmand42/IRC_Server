@@ -3,35 +3,24 @@
 
 #include <string>
 #include <set>
+#include <map>
 
 class Channel {
 private:
     std::string name;
+    std::string topic;
     std::set<int> users;
     std::set<int> operators;
-    std::string topic;
-    std::string mode_flags;
+    std::set<int> invited;
     std::string password;
-    int user_limit;
+    int userLimit;
+    bool inviteOnly;
+    bool topicRestricted;
+    std::string modeFlags;
 
 public:
     Channel(const std::string& name);
     
-    // Getters
-    const std::string& getName() const;
-    const std::set<int>& getUsers() const;
-    const std::set<int>& getOperators() const;
-    const std::string& getTopic() const;
-    const std::string& getModeFlags() const;
-    const std::string& getPassword() const;
-    int getUserLimit() const;
-
-    // Setters
-    void setTopic(const std::string& new_topic);
-    void setModeFlags(const std::string& flags);
-    void setPassword(const std::string& new_password);
-    void setUserLimit(int limit);
-
     // User management
     void addUser(int fd);
     void removeUser(int fd);
@@ -39,10 +28,30 @@ public:
     void addOperator(int fd);
     void removeOperator(int fd);
     bool isOperator(int fd) const;
-
-    // Channel operations
-    void broadcast(int sender_fd, const std::string& message) const;
+    void addInvited(int fd);
+    bool isInvited(int fd) const;
+    
+    // Channel modes
+    void setModeFlags(const std::string& modes);
+    std::string getModeFlags() const;
+    void setPassword(const std::string& pass);
+    std::string getPassword() const;
+    void setUserLimit(int limit);
+    int getUserLimit() const;
+    void setInviteOnly(bool value);
+    bool isInviteOnly() const;
+    void setTopicRestricted(bool value);
+    bool isTopicRestricted() const;
+    
+    // Channel info
+    std::string getName() const;
+    void setTopic(const std::string& newTopic);
+    std::string getTopic() const;
+    const std::set<int>& getUsers() const;
     size_t getUserCount() const;
+    
+    // Message handling
+    void broadcast(int sender_fd, const std::string& message);
 };
 
 #endif // CHANNEL_HPP 
