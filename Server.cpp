@@ -1,0 +1,251 @@
+#include "Server.hpp"
+#include "CommandHandler.hpp"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <iostream>
+#include <cstring>
+
+Server::Server(int port, const std::string& password) : server_fd(-1), port(port), password(password) {
+    try {
+        setupServer();
+    } catch (const std::exception& e) {
+        if (server_fd > 0) {
+            close(server_fd);
+        }
+        throw;
+    }
+}
+
+Server::~Server() {
+    if (server_fd > 0) {
+        close(server_fd);
+    }
+}
+
+void Server::setupServer() {
+    struct sockaddr_in server_addr;
+    
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) {
+        throw std::runtime_error(std::string("Socket creation failed: ") + strerror(errno));
+    }
+
+    int opt = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        close(server_fd);
+        throw std::runtime_error(std::string("Setsockopt failed: ") + strerror(errno));
+    }
+
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
+
+    if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        close(server_fd);
+        throw std::runtime_error(std::string("Bind failed: ") + strerror(errno));
+    }
+
+    if (listen(server_fd, SOMAXCONN) < 0) {
+        close(server_fd);
+        throw std::runtime_error(std::string("Listen failed: ") + strerror(errno));
+    }
+
+    // Set non-blocking mode
+    int flags = fcntl(server_fd, F_GETFL, 0);
+    if (flags < 0) {
+        close(server_fd);
+        throw std::runtime_error(std::string("Fcntl F_GETFL failed: ") + strerror(errno));
+    }
+    
+    if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(server_fd);
+        throw std::runtime_error(std::string("Fcntl F_SETFL failed: ") + strerror(errno));
+    }
+}
+
+void Server::run() {
+    fd_set read_fds;
+    struct timeval tv;
+    int max_fd = server_fd;
+
+    std::cout << "Server is running..." << std::endl;
+
+    while (true) {
+        FD_ZERO(&read_fds);
+        FD_SET(server_fd, &read_fds);
+
+        // Add all client sockets to the set
+        std::map<int, User>::iterator it;
+        for (it = users.begin(); it != users.end(); ++it) {
+            FD_SET(it->first, &read_fds);
+            if (it->first > max_fd) {
+                max_fd = it->first;
+            }
+        }
+
+        // Set timeout
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+
+        // Wait for activity
+        int activity = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
+        if (activity < 0) {
+            std::cerr << "Select error: " << strerror(errno) << std::endl;
+            continue;
+        }
+
+        // Check for new connections
+        if (FD_ISSET(server_fd, &read_fds)) {
+            acceptConnection();
+        }
+
+        // Check for client activity
+        for (it = users.begin(); it != users.end();) {
+            if (FD_ISSET(it->first, &read_fds)) {
+                handleRead(it->first);
+            }
+            ++it;
+        }
+    }
+}
+
+void Server::acceptConnection() {
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    
+    int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
+    if (client_fd < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cerr << "Accept error: " << strerror(errno) << std::endl;
+        }
+        return;
+    }
+
+    // Set non-blocking mode for the client socket
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    if (flags < 0) {
+        close(client_fd);
+        return;
+    }
+    if (fcntl(client_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(client_fd);
+        return;
+    }
+
+    std::cout << "New client connected: " << client_fd << std::endl;
+    addUser(client_fd);
+}
+
+void Server::addUser(int fd) {
+    users.insert(std::make_pair(fd, User(fd)));
+}
+
+void Server::removeUser(int fd) {
+    std::map<int, User>::iterator it = users.find(fd);
+    if (it != users.end()) {
+        // Remove user from all channels
+        std::set<std::string> channels = it->second.getCurrentChannels();
+        std::set<std::string>::iterator ch_it;
+        for (ch_it = channels.begin(); ch_it != channels.end(); ++ch_it) {
+            Channel* channel = getChannel(*ch_it);
+            if (channel) {
+                channel->removeUser(fd);
+            }
+        }
+        users.erase(it);
+        close(fd);
+    }
+}
+
+User* Server::getUser(int fd) {
+    std::map<int, User>::iterator it = users.find(fd);
+    return (it != users.end()) ? &(it->second) : NULL;
+}
+
+Channel* Server::getChannel(const std::string& name) {
+    std::map<std::string, Channel>::iterator it = channels.find(name);
+    return (it != channels.end()) ? &(it->second) : NULL;
+}
+
+void Server::createChannel(const std::string& name) {
+    if (channels.find(name) == channels.end()) {
+        channels.insert(std::make_pair(name, Channel(name)));
+    }
+}
+
+void Server::removeChannel(const std::string& name) {
+    channels.erase(name);
+}
+
+void Server::broadcast(const std::string& channel_name, const std::string& message) {
+    Channel* channel = getChannel(channel_name);
+    if (channel) {
+        channel->broadcast(0, message); // 0 as sender_fd means server broadcast
+    }
+}
+
+void Server::handleRead(int fd) {
+    User* user = getUser(fd);
+    if (!user) {
+        std::cerr << "Error: User not found for fd " << fd << std::endl;
+        return;
+    }
+
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
+    
+    int bytes_read = recv(fd, buffer, sizeof(buffer) - 1, 0);
+    
+    if (bytes_read <= 0) {
+        if (bytes_read == 0) {
+            std::cout << "Client disconnected: " << fd << std::endl;
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cerr << "Error reading from client: " << strerror(errno) << std::endl;
+        }
+        disconnectUser(fd);
+        return;
+    }
+    
+    buffer[bytes_read] = '\0';
+    std::string message(buffer);
+    
+    try {
+        CommandHandler handler(*this);
+        handler.parseMessage(*user, message);
+    } catch (const std::exception& e) {
+        std::cerr << "Error processing message: " << e.what() << std::endl;
+    }
+}
+
+void Server::handleWrite(int fd) {
+    User* user = getUser(fd);
+    if (!user) return;
+    
+    // Burada yazma işlemleri yapılabilir
+    // Şimdilik boş bırakıyoruz çünkü henüz yazma buffer'ı implement edilmedi
+    (void)fd; // Unused parameter warning'i engellemek için
+}
+
+void Server::disconnectUser(int fd) {
+    removeUser(fd);
+}
+
+// Getters implementation
+int Server::getServerFd() const {
+    return server_fd;
+}
+
+const std::string& Server::getPassword() const {
+    return password;
+}
+
+const std::map<int, User>& Server::getUsers() const {
+    return users;
+}
+
+const std::map<std::string, Channel>& Server::getChannels() const {
+    return channels;
+}
