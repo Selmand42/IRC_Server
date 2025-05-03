@@ -164,7 +164,7 @@ void CommandHandler::handleJoin(User& user, const std::vector<std::string>& args
         }
     }
     
-    if (channel->getUserLimit() > 0 && channel->getUserCount() >= channel->getUserLimit()) {
+    if (channel->getUserLimit() > 0 && channel->getUserCount() >= (size_t)channel->getUserLimit()) {
         user.sendMessage(":server 471 " + channel_name + " :Cannot join channel (+l)");
         return;
     }
@@ -244,7 +244,18 @@ void CommandHandler::handlePrivmsg(User& user, const std::vector<std::string>& a
     }
     
     std::string target = args[0];
-    std::string message = args[1];
+    std::string message;
+    
+    // Combine all remaining arguments into one message
+    for (size_t i = 1; i < args.size(); ++i) {
+        if (i > 1) message += " ";
+        message += args[i];
+    }
+    
+    // Remove leading colon if present
+    if (!message.empty() && message[0] == ':') {
+        message = message.substr(1);
+    }
     
     if (target[0] == '#' || target[0] == '&') {
         // Channel message
@@ -259,7 +270,7 @@ void CommandHandler::handlePrivmsg(User& user, const std::vector<std::string>& a
             return;
         }
         
-        std::string msg = ":" + user.getNickname() + " PRIVMSG " + target + " :" + message;
+        std::string msg = ":" + user.getNickname() + "!~" + user.getUsername() + "@localhost PRIVMSG " + target + " :" + message;
         channel->broadcast(user.getFd(), msg);
     } else {
         // Private message
@@ -269,7 +280,7 @@ void CommandHandler::handlePrivmsg(User& user, const std::vector<std::string>& a
         
         for (it = users.begin(); it != users.end(); ++it) {
             if (it->second.getNickname() == target) {
-                std::string msg = ":" + user.getNickname() + " PRIVMSG " + target + " :" + message;
+                std::string msg = ":" + user.getNickname() + "!~" + user.getUsername() + "@localhost PRIVMSG " + target + " :" + message;
                 it->second.sendMessage(msg);
                 found = true;
                 break;
