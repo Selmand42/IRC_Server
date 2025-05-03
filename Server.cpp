@@ -1,11 +1,15 @@
 #include "Server.hpp"
 #include "CommandHandler.hpp"
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <iostream>
 #include <cstring>
+#include <errno.h>
+#include <sys/select.h>
 
 Server::Server(int port, const std::string& password) : server_fd(-1), port(port), password(password) {
     try {
@@ -71,7 +75,7 @@ void Server::run() {
     struct timeval tv;
     int max_fd = server_fd;
 
-    std::cout << "Server is running..." << std::endl;
+    std::cout << "Server is running on port " << port << "..." << std::endl;
 
     while (true) {
         FD_ZERO(&read_fds);
@@ -93,6 +97,9 @@ void Server::run() {
         // Wait for activity
         int activity = select(max_fd + 1, &read_fds, NULL, NULL, &tv);
         if (activity < 0) {
+            if (errno == EINTR) {
+                continue;  // Interrupted system call, just continue
+            }
             std::cerr << "Select error: " << strerror(errno) << std::endl;
             continue;
         }
@@ -103,11 +110,12 @@ void Server::run() {
         }
 
         // Check for client activity
-        for (it = users.begin(); it != users.end();) {
-            if (FD_ISSET(it->first, &read_fds)) {
-                handleRead(it->first);
+        std::map<int, User>::iterator it2;
+        for (it2 = users.begin(); it2 != users.end();) {
+            if (FD_ISSET(it2->first, &read_fds)) {
+                handleRead(it2->first);
             }
-            ++it;
+            ++it2;
         }
     }
 }
@@ -135,7 +143,10 @@ void Server::acceptConnection() {
         return;
     }
 
-    std::cout << "New client connected: " << client_fd << std::endl;
+    char client_ip[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
+    std::cout << "New client connected: " << client_fd << " from " << client_ip << std::endl;
+    
     addUser(client_fd);
 }
 
