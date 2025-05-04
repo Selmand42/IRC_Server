@@ -12,6 +12,7 @@ private:
     std::string username;
     std::string realname;
     bool registered;
+    bool authenticated;
     std::set<std::string> channels;
     std::string modeFlags;
     bool invisible;
@@ -19,6 +20,7 @@ private:
     bool wallops;
     bool restricted;
     bool server_notices;
+    std::string writeBuffer;
 
 public:
     // Constructor
@@ -30,14 +32,17 @@ public:
     const std::string& getUsername() const;
     const std::string& getRealname() const;
     bool isRegistered() const;
+    bool isAuthenticated() const;
     const std::set<std::string>& getCurrentChannels() const;
     std::string getModeFlags() const;
+    std::string& getWriteBuffer();
 
     // Setters
     void setNickname(const std::string& nick);
     void setUsername(const std::string& user);
     void setRealname(const std::string& real);
     void setRegistered(bool value);
+    void setAuthenticated(bool value);
     void setModeFlags(const std::string& modes);
 
     // Channel operations
@@ -46,7 +51,7 @@ public:
     bool isInChannel(const std::string& channel_name) const;
 
     // Message operations
-    void sendMessage(const std::string& message) const;
+    void sendMessage(const std::string& message);
 
     // Mode management
     void setInvisible(bool value);

@@ -6,6 +6,7 @@
 User::User(int fd) : 
     fd(fd), 
     registered(false),
+    authenticated(false),
     invisible(false),
     operator_(false),
     wallops(false),
@@ -97,9 +98,13 @@ bool User::isInChannel(const std::string& channel_name) const {
     return channels.find(channel_name) != channels.end();
 }
 
-void User::sendMessage(const std::string& message) const {
+std::string& User::getWriteBuffer() {
+    return writeBuffer;
+}
+
+void User::sendMessage(const std::string& message) {
     if (fd > 0) {
-        send(fd, message.c_str(), message.length(), 0);
+        writeBuffer += message + "\r\n";
     }
 }
 
@@ -141,4 +146,12 @@ bool User::isRestricted() const {
 
 bool User::isServerNotices() const {
     return server_notices;
+}
+
+bool User::isAuthenticated() const {
+    return authenticated;
+}
+
+void User::setAuthenticated(bool value) {
+    authenticated = value;
 } 

@@ -106,21 +106,21 @@ void Server::run() {
 
         // Check for new connections
         if (FD_ISSET(server_fd, &read_fds)) {
-            acceptConnection();
+            handleNewConnection();
         }
 
         // Check for client activity
         std::map<int, User>::iterator it2;
         for (it2 = users.begin(); it2 != users.end();) {
             if (FD_ISSET(it2->first, &read_fds)) {
-                handleRead(it2->first);
+                handleClientData(it2->first);
             }
             ++it2;
         }
     }
 }
 
-void Server::acceptConnection() {
+void Server::handleNewConnection() {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     
@@ -147,7 +147,56 @@ void Server::acceptConnection() {
     inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
     std::cout << "New client connected: " << client_fd << " from " << client_ip << std::endl;
     
-    addUser(client_fd);
+    // Add user but mark as unauthenticated
+    User newUser(client_fd);
+    newUser.setAuthenticated(false);
+    users.insert(std::make_pair(client_fd, newUser));
+}
+
+void Server::handleClientData(int client_fd) {
+    User* user = getUser(client_fd);
+    if (!user) {
+        std::cerr << "Error: User not found for fd " << client_fd << std::endl;
+        return;
+    }
+
+    char buffer[1024];
+    memset(buffer, 0, sizeof(buffer));
+    
+    int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+    
+    if (bytes_read <= 0) {
+        if (bytes_read == 0) {
+            std::cout << "Client disconnected: " << client_fd << std::endl;
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cerr << "Error reading from client: " << strerror(errno) << std::endl;
+        }
+        disconnectUser(client_fd);
+        return;
+    }
+    
+    buffer[bytes_read] = '\0';
+    std::string message(buffer);
+
+    // Check if user is authenticated
+    if (!user->isAuthenticated()) {
+        // First message should be the password
+        if (message == password) {
+            user->setAuthenticated(true);
+            user->sendMessage(":server 001 :Welcome to the IRC server!");
+        } else {
+            user->sendMessage(":server 464 :Password incorrect");
+            disconnectUser(client_fd);
+            return;
+        }
+    } else {
+        try {
+            CommandHandler handler(*this);
+            handler.parseMessage(*user, message);
+        } catch (const std::exception& e) {
+            std::cerr << "Error processing message: " << e.what() << std::endl;
+        }
+    }
 }
 
 void Server::addUser(int fd) {
@@ -234,10 +283,26 @@ void Server::handleRead(int fd) {
 void Server::handleWrite(int fd) {
     User* user = getUser(fd);
     if (!user) return;
+
+    // Get the write buffer for this user
+    std::string& writeBuffer = user->getWriteBuffer();
+    if (writeBuffer.empty()) return;
+
+    // Try to send the data
+    int bytes_sent = send(fd, writeBuffer.c_str(), writeBuffer.length(), 0);
     
-    // Burada yazma işlemleri yapılabilir
-    // Şimdilik boş bırakıyoruz çünkü henüz yazma buffer'ı implement edilmedi
-    (void)fd; // Unused parameter warning'i engellemek için
+    if (bytes_sent < 0) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            std::cerr << "Error writing to client: " << strerror(errno) << std::endl;
+            disconnectUser(fd);
+        }
+        return;
+    }
+
+    // Remove the sent data from the buffer
+    if (bytes_sent > 0) {
+        writeBuffer = writeBuffer.substr(bytes_sent);
+    }
 }
 
 void Server::disconnectUser(int fd) {
