@@ -23,7 +23,15 @@ Server::Server(int port, const std::string& password) : server_fd(-1), port(port
 }
 
 Server::~Server() {
-    if (server_fd > 0) {
+    // Clean up all User objects
+    std::map<int, User*>::iterator it;
+    for (it = users.begin(); it != users.end(); ++it) {
+        delete it->second;
+    }
+    users.clear();
+    
+    // Close server socket
+    if (server_fd != -1) {
         close(server_fd);
     }
 }
@@ -82,7 +90,7 @@ void Server::run() {
         FD_SET(server_fd, &read_fds);
 
         // Add all client sockets to the set
-        std::map<int, User>::iterator it;
+        std::map<int, User*>::iterator it;
         for (it = users.begin(); it != users.end(); ++it) {
             FD_SET(it->first, &read_fds);
             if (it->first > max_fd) {
@@ -110,12 +118,16 @@ void Server::run() {
         }
 
         // Check for client activity
-        std::map<int, User>::iterator it2;
-        for (it2 = users.begin(); it2 != users.end();) {
-            if (FD_ISSET(it2->first, &read_fds)) {
-                handleClientData(it2->first);
+        std::vector<int> fds_to_check;
+        for (std::map<int, User*>::iterator it = users.begin(); it != users.end(); ++it) {
+            if (FD_ISSET(it->first, &read_fds)) {
+                fds_to_check.push_back(it->first);
             }
-            ++it2;
+        }
+        
+        // Process the fds we found
+        for (std::vector<int>::iterator it = fds_to_check.begin(); it != fds_to_check.end(); ++it) {
+            handleClientData(*it);
         }
     }
 }
@@ -148,9 +160,9 @@ void Server::handleNewConnection() {
     std::cout << "New client connected: " << client_fd << " from " << client_ip << std::endl;
     
     // Add user but mark as unauthenticated
-    User newUser(client_fd);
-    newUser.setAuthenticated(false);
-    users.insert(std::pair<int, User>(client_fd, newUser));
+    User* newUser = new User(client_fd);
+    newUser->setAuthenticated(false);
+    users.insert(std::pair<int, User*>(client_fd, newUser));
 }
 
 void Server::handleClientData(int client_fd) {
@@ -181,18 +193,34 @@ void Server::handleClientData(int client_fd) {
     // Check if user is authenticated
     if (!user->isAuthenticated()) {
         // First message should be the password
-        if (message == password) {
+        std::string trimmed_message = message;
+        // Remove trailing whitespace and newlines
+        while (!trimmed_message.empty() && (trimmed_message[trimmed_message.length()-1] == '\r' || 
+               trimmed_message[trimmed_message.length()-1] == '\n' || 
+               trimmed_message[trimmed_message.length()-1] == ' ')) {
+            trimmed_message.erase(trimmed_message.length()-1);
+        }
+        
+        // Check if message starts with "pass "
+        if (trimmed_message.substr(0, 5) == "pass ") {
+            trimmed_message = trimmed_message.substr(5); // Remove "pass " prefix
+        }
+        
+        if (trimmed_message == password) {
             user->setAuthenticated(true);
             user->sendMessage(":server 001 :Welcome to the IRC server!");
         } else {
-            user->sendMessage(":server 464 :Password incorrect");
+            // Send error message first
+            std::string error_msg = ":server 464 :Password incorrect\r\n";
+            send(client_fd, error_msg.c_str(), error_msg.length(), 0);
+            // Then disconnect
             disconnectUser(client_fd);
             return;
         }
     } else {
         try {
             CommandHandler handler(*this);
-            handler.parseMessage(*user, message);
+            handler.parseMessage(user, message);
         } catch (const std::exception& e) {
             std::cerr << "Error processing message: " << e.what() << std::endl;
         }
@@ -200,14 +228,14 @@ void Server::handleClientData(int client_fd) {
 }
 
 void Server::addUser(int fd) {
-    users.insert(std::pair<int, User>(fd, User(fd)));
+    users.insert(std::pair<int, User*>(fd, new User(fd)));
 }
 
 void Server::removeUser(int fd) {
-    std::map<int, User>::iterator it = users.find(fd);
+    std::map<int, User*>::iterator it = users.find(fd);
     if (it != users.end()) {
         // Remove user from all channels
-        std::set<std::string> channels = it->second.getCurrentChannels();
+        std::set<std::string> channels = it->second->getCurrentChannels();
         std::set<std::string>::iterator ch_it;
         for (ch_it = channels.begin(); ch_it != channels.end(); ++ch_it) {
             Channel* channel = getChannel(*ch_it);
@@ -215,14 +243,15 @@ void Server::removeUser(int fd) {
                 channel->removeUser(fd);
             }
         }
+        delete it->second;  // Delete the User object
         users.erase(it);
         close(fd);
     }
 }
 
 User* Server::getUser(int fd) {
-    std::map<int, User>::iterator it = users.find(fd);
-    return (it != users.end()) ? &(it->second) : NULL;
+    std::map<int, User*>::iterator it = users.find(fd);
+    return (it != users.end()) ? it->second : NULL;
 }
 
 Channel* Server::getChannel(const std::string& name) {
@@ -274,7 +303,7 @@ void Server::handleRead(int fd) {
     
     try {
         CommandHandler handler(*this);
-        handler.parseMessage(*user, message);
+        handler.parseMessage(user, message);
     } catch (const std::exception& e) {
         std::cerr << "Error processing message: " << e.what() << std::endl;
     }
@@ -318,7 +347,7 @@ const std::string& Server::getPassword() const {
     return password;
 }
 
-const std::map<int, User>& Server::getUsers() const {
+const std::map<int, User*>& Server::getUsers() const {
     return users;
 }
 

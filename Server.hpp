@@ -11,7 +11,7 @@ private:
     int server_fd;
     int port;
     std::string password;
-    std::map<int, User> users;
+    std::map<int, User*> users;
     std::map<std::string, Channel> channels;
 
     void setupServer();
@@ -32,7 +32,7 @@ public:
     // Getters
     int getServerFd() const;
     const std::string& getPassword() const;
-    const std::map<int, User>& getUsers() const;
+    const std::map<int, User*>& getUsers() const;
     const std::map<std::string, Channel>& getChannels() const;
 
     // User management
