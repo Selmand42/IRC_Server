@@ -20,7 +20,7 @@ private:
     bool wallops;
     bool restricted;
     bool server_notices;
-    std::string writeBuffer;
+    mutable std::string writeBuffer;
 
 public:
     // Constructor
@@ -35,7 +35,7 @@ public:
     bool isAuthenticated() const;
     const std::set<std::string>& getCurrentChannels() const;
     std::string getModeFlags() const;
-    std::string& getWriteBuffer();
+    std::string& getWriteBuffer() const;
 
     // Setters
     void setNickname(const std::string& nick);
@@ -51,7 +51,7 @@ public:
     bool isInChannel(const std::string& channel_name) const;
 
     // Message operations
-    void sendMessage(const std::string& message);
+    void sendMessage(const std::string& message) const;
 
     // Mode management
     void setInvisible(bool value);

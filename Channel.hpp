@@ -48,7 +48,7 @@ public:
     void setTopic(const std::string& newTopic);
     std::string getTopic() const;
     const std::set<int>& getUsers() const;
-    size_t getUserCount() const;
+    unsigned int getUserCount() const;
     
     // Message handling
     void broadcast(int sender_fd, const std::string& message);

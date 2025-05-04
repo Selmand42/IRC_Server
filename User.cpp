@@ -98,11 +98,11 @@ bool User::isInChannel(const std::string& channel_name) const {
     return channels.find(channel_name) != channels.end();
 }
 
-std::string& User::getWriteBuffer() {
+std::string& User::getWriteBuffer() const {
     return writeBuffer;
 }
 
-void User::sendMessage(const std::string& message) {
+void User::sendMessage(const std::string& message) const {
     if (fd > 0) {
         writeBuffer += message + "\r\n";
     }

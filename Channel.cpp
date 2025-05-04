@@ -98,7 +98,7 @@ void Channel::broadcast(int sender_fd, const std::string& message) {
     }
 }
 
-size_t Channel::getUserCount() const {
+unsigned int Channel::getUserCount() const {
     return users.size();
 }
 

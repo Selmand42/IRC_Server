@@ -150,7 +150,7 @@ void Server::handleNewConnection() {
     // Add user but mark as unauthenticated
     User newUser(client_fd);
     newUser.setAuthenticated(false);
-    users.insert(std::make_pair(client_fd, newUser));
+    users.insert(std::pair<int, User>(client_fd, newUser));
 }
 
 void Server::handleClientData(int client_fd) {
@@ -200,7 +200,7 @@ void Server::handleClientData(int client_fd) {
 }
 
 void Server::addUser(int fd) {
-    users.insert(std::make_pair(fd, User(fd)));
+    users.insert(std::pair<int, User>(fd, User(fd)));
 }
 
 void Server::removeUser(int fd) {
@@ -232,7 +232,7 @@ Channel* Server::getChannel(const std::string& name) {
 
 void Server::createChannel(const std::string& name) {
     if (channels.find(name) == channels.end()) {
-        channels.insert(std::make_pair(name, Channel(name)));
+        channels.insert(std::pair<std::string, Channel>(name, Channel(name)));
     }
 }
 

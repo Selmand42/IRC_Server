@@ -9,7 +9,10 @@ void CommandHandler::parseMessage(User& user, const std::string& message) {
     if (parts.empty()) return;
 
     std::string command = parts[0];
-    std::transform(command.begin(), command.end(), command.begin(), ::toupper);
+    // Convert command to uppercase
+    for (std::string::iterator it = command.begin(); it != command.end(); ++it) {
+        *it = toupper(*it);
+    }
     
     parts.erase(parts.begin()); // Remove command from args
     executeCommand(user, command, parts);
