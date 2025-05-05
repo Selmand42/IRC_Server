@@ -22,6 +22,7 @@ private:
     void handleMode(User* user, const std::vector<std::string>& args);
     void handleTopic(User* user, const std::vector<std::string>& args);
     void handleInvite(User* user, const std::vector<std::string>& args);
+    void handlePass(User* user, const std::vector<std::string>& args);
 
     // Helper functions
     std::vector<std::string> splitMessage(const std::string& message);

@@ -167,10 +167,7 @@ void Server::handleNewConnection() {
 
 void Server::handleClientData(int client_fd) {
     User* user = getUser(client_fd);
-    if (!user) {
-        std::cerr << "Error: User not found for fd " << client_fd << std::endl;
-        return;
-    }
+    if (!user) return;
 
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
@@ -190,40 +187,11 @@ void Server::handleClientData(int client_fd) {
     buffer[bytes_read] = '\0';
     std::string message(buffer);
 
-    // Check if user is authenticated
-    if (!user->isAuthenticated()) {
-        // First message should be the password
-        std::string trimmed_message = message;
-        // Remove trailing whitespace and newlines
-        while (!trimmed_message.empty() && (trimmed_message[trimmed_message.length()-1] == '\r' || 
-               trimmed_message[trimmed_message.length()-1] == '\n' || 
-               trimmed_message[trimmed_message.length()-1] == ' ')) {
-            trimmed_message.erase(trimmed_message.length()-1);
-        }
-        
-        // Check if message starts with "pass "
-        if (trimmed_message.substr(0, 5) == "pass ") {
-            trimmed_message = trimmed_message.substr(5); // Remove "pass " prefix
-        }
-        
-        if (trimmed_message == password) {
-            user->setAuthenticated(true);
-            user->sendMessage(":server 001 :Welcome to the IRC server!");
-        } else {
-            // Send error message first
-            std::string error_msg = ":server 464 :Password incorrect\r\n";
-            send(client_fd, error_msg.c_str(), error_msg.length(), 0);
-            // Then disconnect
-            disconnectUser(client_fd);
-            return;
-        }
-    } else {
-        try {
-            CommandHandler handler(*this);
-            handler.parseMessage(user, message);
-        } catch (const std::exception& e) {
-            std::cerr << "Error processing message: " << e.what() << std::endl;
-        }
+    try {
+        CommandHandler handler(*this);
+        handler.parseMessage(user, message);
+    } catch (const std::exception& e) {
+        std::cerr << "Error processing message: " << e.what() << std::endl;
     }
 }
 

@@ -52,6 +52,9 @@ void CommandHandler::executeCommand(User* user, const std::string& command, cons
     else if (command == "INVITE") {
         handleInvite(user, args);
     }
+    else if (command == "PASS") {
+        handlePass(user, args);
+    }
 }
 
 std::vector<std::string> CommandHandler::splitMessage(const std::string& message) {
@@ -619,4 +622,19 @@ void CommandHandler::handleInvite(User* user, const std::vector<std::string>& ar
     
     // Send confirmation to inviter
     user->sendMessage(":server 341 " + user->getNickname() + " " + target_nick + " " + channel_name);
+}
+
+void CommandHandler::handlePass(User* user, const std::vector<std::string>& args) {
+    if (args.empty()) {
+        user->sendMessage(":server 461 PASS :Not enough parameters");
+        return;
+    }
+
+    std::string provided_password = args[0];
+    if (provided_password == server.getPassword()) {
+        user->setAuthenticated(true);
+    } else {
+        user->sendMessage(":server 464 :Password incorrect");
+        server.disconnectUser(user->getFd());
+    }
 } 

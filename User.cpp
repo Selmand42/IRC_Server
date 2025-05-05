@@ -104,7 +104,35 @@ std::string& User::getWriteBuffer() const {
 
 void User::sendMessage(const std::string& message) const {
     if (fd > 0) {
-        writeBuffer += message + "\r\n";
+        // Allow server responses even when not registered
+        if (message.substr(0, 7) == ":server") {
+            int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
+            if (bytes_sent < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    writeBuffer += message + "\r\n";
+                }
+            }
+            return;
+        }
+
+        if (!registered) {
+            std::string error_msg = ":server 451 :You have not registered\r\n";
+            send(fd, error_msg.c_str(), error_msg.length(), 0);
+            return;
+        }
+        if (nickname.empty() || username.empty()) {
+            std::string error_msg = ":server 451 :You must set both nickname and username before sending messages\r\n";
+            send(fd, error_msg.c_str(), error_msg.length(), 0);
+            return;
+        }
+        // Try to send immediately
+        int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
+        if (bytes_sent < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // If send would block, add to buffer
+                writeBuffer += message + "\r\n";
+            }
+        }
     }
 }
 
