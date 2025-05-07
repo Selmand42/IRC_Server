@@ -9,7 +9,7 @@
 class CommandHandler {
 private:
     Server& server;
-    
+
     // Command handlers
     void handleNick(User* user, const std::vector<std::string>& args);
     void handleUser(User* user, const std::vector<std::string>& args);
@@ -28,6 +28,8 @@ private:
     std::vector<std::string> splitMessage(const std::string& message);
     bool isValidNickname(const std::string& nickname);
     bool isValidChannelName(const std::string& channel);
+    bool isUserAuthenticated(User* user);
+    bool isUserRegistered(User* user);
 
 public:
     CommandHandler(Server& server);
@@ -35,4 +37,4 @@ public:
     void executeCommand(User* user, const std::string& command, const std::vector<std::string>& args);
 };
 
-#endif // COMMAND_HANDLER_HPP 
+#endif // COMMAND_HANDLER_HPP
