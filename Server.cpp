@@ -29,7 +29,7 @@ Server::~Server() {
         delete it->second;
     }
     users.clear();
-    
+
     // Close server socket
     if (server_fd != -1) {
         close(server_fd);
@@ -38,7 +38,7 @@ Server::~Server() {
 
 void Server::setupServer() {
     struct sockaddr_in server_addr;
-    
+
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         throw std::runtime_error(std::string("Socket creation failed: ") + strerror(errno));
@@ -66,13 +66,7 @@ void Server::setupServer() {
     }
 
     // Set non-blocking mode
-    int flags = fcntl(server_fd, F_GETFL, 0);
-    if (flags < 0) {
-        close(server_fd);
-        throw std::runtime_error(std::string("Fcntl F_GETFL failed: ") + strerror(errno));
-    }
-    
-    if (fcntl(server_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    if (fcntl(server_fd, F_SETFL, O_NONBLOCK) < 0) {
         close(server_fd);
         throw std::runtime_error(std::string("Fcntl F_SETFL failed: ") + strerror(errno));
     }
@@ -124,7 +118,7 @@ void Server::run() {
                 fds_to_check.push_back(it->first);
             }
         }
-        
+
         // Process the fds we found
         for (std::vector<int>::iterator it = fds_to_check.begin(); it != fds_to_check.end(); ++it) {
             handleClientData(*it);
@@ -135,22 +129,15 @@ void Server::run() {
 void Server::handleNewConnection() {
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
-    
+
     int client_fd = accept(server_fd, (struct sockaddr*)&client_addr, &client_len);
     if (client_fd < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            std::cerr << "Accept error: " << strerror(errno) << std::endl;
-        }
+        std::cerr << "Accept error: " << strerror(errno) << std::endl;
         return;
     }
 
     // Set non-blocking mode for the client socket
-    int flags = fcntl(client_fd, F_GETFL, 0);
-    if (flags < 0) {
-        close(client_fd);
-        return;
-    }
-    if (fcntl(client_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    if (fcntl(client_fd, F_SETFL, O_NONBLOCK) < 0) {
         close(client_fd);
         return;
     }
@@ -158,7 +145,7 @@ void Server::handleNewConnection() {
     char client_ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(client_addr.sin_addr), client_ip, INET_ADDRSTRLEN);
     std::cout << "New client connected: " << client_fd << " from " << client_ip << std::endl;
-    
+
     // Add user but mark as unauthenticated
     User* newUser = new User(client_fd);
     newUser->setAuthenticated(false);
@@ -171,19 +158,19 @@ void Server::handleClientData(int client_fd) {
 
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
-    
+
     int bytes_read = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
-    
+
     if (bytes_read <= 0) {
         if (bytes_read == 0) {
             std::cout << "Client disconnected: " << client_fd << std::endl;
-        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        } else {
             std::cerr << "Error reading from client: " << strerror(errno) << std::endl;
         }
         disconnectUser(client_fd);
         return;
     }
-    
+
     buffer[bytes_read] = '\0';
     std::string message(buffer);
 
@@ -253,22 +240,22 @@ void Server::handleRead(int fd) {
 
     char buffer[1024];
     memset(buffer, 0, sizeof(buffer));
-    
+
     int bytes_read = recv(fd, buffer, sizeof(buffer) - 1, 0);
-    
+
     if (bytes_read <= 0) {
         if (bytes_read == 0) {
             std::cout << "Client disconnected: " << fd << std::endl;
-        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        } else {
             std::cerr << "Error reading from client: " << strerror(errno) << std::endl;
         }
         disconnectUser(fd);
         return;
     }
-    
+
     buffer[bytes_read] = '\0';
     std::string message(buffer);
-    
+
     try {
         CommandHandler handler(*this);
         handler.parseMessage(user, message);
@@ -287,12 +274,10 @@ void Server::handleWrite(int fd) {
 
     // Try to send the data
     int bytes_sent = send(fd, writeBuffer.c_str(), writeBuffer.length(), 0);
-    
+
     if (bytes_sent < 0) {
-        if (errno != EAGAIN && errno != EWOULDBLOCK) {
-            std::cerr << "Error writing to client: " << strerror(errno) << std::endl;
-            disconnectUser(fd);
-        }
+        std::cerr << "Error writing to client: " << strerror(errno) << std::endl;
+        disconnectUser(fd);
         return;
     }
 

@@ -39,7 +39,7 @@ public:
     void addUser(int fd);
     void removeUser(int fd);
     User* getUser(int fd);
-    
+
     // Channel management
     Channel* getChannel(const std::string& name);
     void createChannel(const std::string& name);

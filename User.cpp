@@ -3,8 +3,8 @@
 #include <unistd.h>
 #include <iostream>
 
-User::User(int fd) : 
-    fd(fd), 
+User::User(int fd) :
+    fd(fd),
     registered(false),
     authenticated(false),
     invisible(false),
@@ -75,7 +75,7 @@ void User::setModeFlags(const std::string& modes) {
             adding = false;
             continue;
         }
-        
+
         switch (modes[i]) {
             case 'i': setInvisible(adding); break;
             case 'o': setOperator(adding); break;
@@ -108,9 +108,8 @@ void User::sendMessage(const std::string& message) const {
         if (message.substr(0, 7) == ":server") {
             int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
             if (bytes_sent < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    writeBuffer += message + "\r\n";
-                }
+                std::cerr << "Error sending message: " << strerror(errno) << std::endl;
+                return;
             }
             return;
         }
@@ -128,10 +127,8 @@ void User::sendMessage(const std::string& message) const {
         // Try to send immediately
         int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
         if (bytes_sent < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // If send would block, add to buffer
-                writeBuffer += message + "\r\n";
-            }
+            std::cerr << "Error sending message: " << strerror(errno) << std::endl;
+            return;
         }
     }
 }
@@ -182,4 +179,4 @@ bool User::isAuthenticated() const {
 
 void User::setAuthenticated(bool value) {
     authenticated = value;
-} 
+}

@@ -3,8 +3,8 @@
 #include <sys/socket.h>
 #include <sstream>
 
-Channel::Channel(const std::string& name) : 
-    name(name), 
+Channel::Channel(const std::string& name) :
+    name(name),
     userLimit(0),
     inviteOnly(false),
     topicRestricted(false),
@@ -92,9 +92,7 @@ bool Channel::isInvited(int fd) const {
 void Channel::broadcast(int sender_fd, const std::string& message) {
     std::set<int>::iterator it;
     for (it = users.begin(); it != users.end(); ++it) {
-        if (*it != sender_fd) { // Don't send to the sender
-            send(*it, message.c_str(), message.length(), 0);
-        }
+        send(*it, message.c_str(), message.length(), 0);
     }
 }
 
@@ -116,4 +114,4 @@ void Channel::setTopicRestricted(bool value) {
 
 bool Channel::isTopicRestricted() const {
     return topicRestricted;
-} 
+}

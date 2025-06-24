@@ -53,6 +53,8 @@ void CommandHandler::executeCommand(User* user, const std::string& command, cons
         handleTopic(user, args);
     } else if (command == "INVITE") {
         handleInvite(user, args);
+    } else {
+        user->sendMessage(":server 421 " + command + " :Unknown command");
     }
 }
 
@@ -60,11 +62,27 @@ std::vector<std::string> CommandHandler::splitMessage(const std::string& message
     std::vector<std::string> result;
     std::istringstream iss(message);
     std::string token;
-
-    while (iss >> token) {
+    bool found_colon = false;
+    while (!found_colon && iss >> token) {
+        if (token[0] == ':') {
+            found_colon = true;
+            std::string trailing = token;
+            std::string rest;
+            std::getline(iss, rest);
+            if (!rest.empty()) {
+                // Preserve the space after the colon if present
+                trailing += rest;
+            }
+            result.push_back(trailing);
+            break;
+        } else {
+            result.push_back(token);
+        }
+    }
+    // If the message ends with a colon and nothing after, still add it
+    if (!found_colon && !token.empty() && token[0] == ':') {
         result.push_back(token);
     }
-
     return result;
 }
 
@@ -389,7 +407,15 @@ void CommandHandler::handleKick(User* user, const std::vector<std::string>& args
 
     std::string channel_name = args[0];
     std::string target_nick = args[1];
-    std::string reason = args.size() > 2 ? args[2] : user->getNickname();
+    std::string reason;
+    if (args.size() > 2) {
+        reason = args[2];
+        for (size_t i = 3; i < args.size(); ++i) {
+            reason += " " + args[i];
+        }
+    } else {
+        reason = user->getNickname();
+    }
 
     Channel* channel = server.getChannel(channel_name);
     if (!channel) {
