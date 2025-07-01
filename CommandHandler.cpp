@@ -737,6 +737,9 @@ void CommandHandler::handleInvite(User* user, const std::vector<std::string>& ar
         return;
     }
 
+    // Add the user to the invited list so they can join invite-only channels
+    channel->addInvited(target_fd);
+
     // Send invite message to target user
     std::string invite_msg = ":" + user->getNickname() + " INVITE " + target_nick + " :" + channel_name;
     User* target_user = server.getUser(target_fd);
