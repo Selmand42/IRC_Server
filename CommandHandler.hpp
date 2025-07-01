@@ -26,6 +26,7 @@ private:
 
     // Helper functions
     std::vector<std::string> splitMessage(const std::string& message);
+    std::vector<std::string> splitByComma(const std::string& str);
     bool isValidNickname(const std::string& nickname);
     bool isValidChannelName(const std::string& channel);
     bool isUserAuthenticated(User* user);

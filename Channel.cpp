@@ -7,8 +7,7 @@ Channel::Channel(const std::string& name) :
     name(name),
     userLimit(0),
     inviteOnly(false),
-    topicRestricted(false),
-    modeFlags("") {
+    topicRestricted(false) {
 }
 
 std::string Channel::getName() const {
@@ -24,7 +23,11 @@ std::string Channel::getTopic() const {
 }
 
 std::string Channel::getModeFlags() const {
-    return modeFlags;
+    std::string flags = "+";
+    if (inviteOnly) flags += "i";
+    if (topicRestricted) flags += "t";
+    // Add more flags here if you add more channel modes
+    return flags;
 }
 
 std::string Channel::getPassword() const {
@@ -37,10 +40,6 @@ int Channel::getUserLimit() const {
 
 void Channel::setTopic(const std::string& new_topic) {
     topic = new_topic;
-}
-
-void Channel::setModeFlags(const std::string& modes) {
-    modeFlags = modes;
 }
 
 void Channel::setPassword(const std::string& pass) {
@@ -92,7 +91,9 @@ bool Channel::isInvited(int fd) const {
 void Channel::broadcast(int sender_fd, const std::string& message) {
     std::set<int>::iterator it;
     for (it = users.begin(); it != users.end(); ++it) {
-        send(*it, message.c_str(), message.length(), 0);
+        if (*it != sender_fd) { // Don't send to the sender
+            send(*it, message.c_str(), message.length(), 0);
+        }
     }
 }
 

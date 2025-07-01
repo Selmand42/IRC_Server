@@ -54,7 +54,10 @@ void CommandHandler::executeCommand(User* user, const std::string& command, cons
     } else if (command == "INVITE") {
         handleInvite(user, args);
     } else {
-        user->sendMessage(":server 421 " + command + " :Unknown command");
+        // Unknown command - only send error if user is authenticated and registered
+        if (user->isAuthenticated() && user->isRegistered()) {
+            user->sendMessage(":server 421 " + user->getNickname() + " " + command + " :Unknown command");
+        }
     }
 }
 
@@ -83,6 +86,23 @@ std::vector<std::string> CommandHandler::splitMessage(const std::string& message
     if (!found_colon && !token.empty() && token[0] == ':') {
         result.push_back(token);
     }
+    return result;
+}
+
+std::vector<std::string> CommandHandler::splitByComma(const std::string& str) {
+    std::vector<std::string> result;
+    std::stringstream ss(str);
+    std::string item;
+
+    while (std::getline(ss, item, ',')) {
+        // Trim whitespace
+        item.erase(0, item.find_first_not_of(" \t\r\n"));
+        item.erase(item.find_last_not_of(" \t\r\n") + 1);
+        if (!item.empty()) {
+            result.push_back(item);
+        }
+    }
+
     return result;
 }
 
@@ -200,77 +220,89 @@ void CommandHandler::handleJoin(User* user, const std::vector<std::string>& args
         return;
     }
 
-    std::string channel_name = args[0];
-    if (!isValidChannelName(channel_name)) {
-        user->sendMessage(":server 403 " + channel_name + " :No such channel");
-        return;
+    std::vector<std::string> channels = splitByComma(args[0]);
+    std::vector<std::string> keys;
+
+    // Parse keys if provided
+    if (args.size() > 1) {
+        keys = splitByComma(args[1]);
     }
 
-    Channel* channel = server.getChannel(channel_name);
-    if (!channel) {
-        server.createChannel(channel_name);
-        channel = server.getChannel(channel_name);
-    }
+    for (size_t i = 0; i < channels.size(); ++i) {
+        std::string channel_name = channels[i];
+        std::string key = (i < keys.size()) ? keys[i] : "";
 
-    // Check channel modes and restrictions
-    if (channel->isInviteOnly() && !channel->isInvited(user->getFd())) {
-        user->sendMessage(":server 473 " + channel_name + " :Cannot join channel (+i)");
-        return;
-    }
-
-    if (!channel->getPassword().empty()) {
-        if (args.size() < 2 || args[1] != channel->getPassword()) {
-            user->sendMessage(":server 475 " + channel_name + " :Cannot join channel (+k)");
-            return;
+        if (!isValidChannelName(channel_name)) {
+            user->sendMessage(":server 403 " + channel_name + " :No such channel");
+            continue;
         }
-    }
 
-    if (channel->getUserLimit() > 0 && channel->getUserCount() >= (size_t)channel->getUserLimit()) {
-        user->sendMessage(":server 471 " + channel_name + " :Cannot join channel (+l)");
-        return;
-    }
+        Channel* channel = server.getChannel(channel_name);
+        if (!channel) {
+            server.createChannel(channel_name);
+            channel = server.getChannel(channel_name);
+        }
 
-    channel->addUser(user->getFd());
-    user->joinChannel(channel_name);
+        // Check channel modes and restrictions
+        if (channel->isInviteOnly() && !channel->isInvited(user->getFd())) {
+            user->sendMessage(":server 473 " + channel_name + " :Cannot join channel (+i)");
+            continue;
+        }
 
-    // Send join message to all users in the channel
-    std::string join_msg = ":" + user->getNickname() + " JOIN :" + channel_name;
-    channel->broadcast(user->getFd(), join_msg);
-
-    // Send channel topic if exists
-    if (!channel->getTopic().empty()) {
-        user->sendMessage(":server 332 " + user->getNickname() + " " + channel_name + " :" + channel->getTopic());
-    }
-
-    // Send channel mode information
-    std::stringstream ss;
-    ss << ":" << server.getServerFd() << " 324 " << user->getNickname() << " " << channel_name << " " << channel->getModeFlags();
-    if (!channel->getPassword().empty()) {
-        ss << " " << channel->getPassword();
-    }
-    if (channel->getUserLimit() > 0) {
-        ss << " " << channel->getUserLimit();
-    }
-    user->sendMessage(ss.str());
-
-    // Send list of users in channel
-    ss.str("");
-    ss << ":" << server.getServerFd() << " 353 " << user->getNickname() << " = " << channel_name << " :";
-    const std::set<int>& users = channel->getUsers();
-    std::set<int>::const_iterator it;
-    for (it = users.begin(); it != users.end(); ++it) {
-        User* channel_user = server.getUser(*it);
-        if (channel_user) {
-            if (channel->isOperator(*it)) {
-                ss << "@";
+        if (!channel->getPassword().empty()) {
+            if (key.empty() || key != channel->getPassword()) {
+                user->sendMessage(":server 475 " + channel_name + " :Cannot join channel (+k)");
+                continue;
             }
-            ss << channel_user->getNickname() << " ";
         }
-    }
-    user->sendMessage(ss.str());
 
-    // End of names list
-    user->sendMessage(":server 366 " + user->getNickname() + " " + channel_name + " :End of /NAMES list");
+        if (channel->getUserLimit() > 0 && channel->getUserCount() >= (size_t)channel->getUserLimit()) {
+            user->sendMessage(":server 471 " + channel_name + " :Cannot join channel (+l)");
+            continue;
+        }
+
+        channel->addUser(user->getFd());
+        user->joinChannel(channel_name);
+
+        // Send join message to all users in the channel
+        std::string join_msg = ":" + user->getNickname() + " JOIN :" + channel_name;
+        channel->broadcast(user->getFd(), join_msg);
+
+        // Send channel topic if exists
+        if (!channel->getTopic().empty()) {
+            user->sendMessage(":server 332 " + user->getNickname() + " " + channel_name + " :" + channel->getTopic());
+        }
+
+        // Send channel mode information
+        std::stringstream ss;
+        ss << ":" << server.getServerFd() << " 324 " << user->getNickname() << " " << channel_name << " " << channel->getModeFlags();
+        if (!channel->getPassword().empty()) {
+            ss << " " << channel->getPassword();
+        }
+        if (channel->getUserLimit() > 0) {
+            ss << " " << channel->getUserLimit();
+        }
+        user->sendMessage(ss.str());
+
+        // Send list of users in channel
+        ss.str("");
+        ss << ":" << server.getServerFd() << " 353 " << user->getNickname() << " = " << channel_name << " :";
+        const std::set<int>& users = channel->getUsers();
+        std::set<int>::const_iterator it;
+        for (it = users.begin(); it != users.end(); ++it) {
+            User* channel_user = server.getUser(*it);
+            if (channel_user) {
+                if (channel->isOperator(*it)) {
+                    ss << "@";
+                }
+                ss << channel_user->getNickname() << " ";
+            }
+        }
+        user->sendMessage(ss.str());
+
+        // End of names list
+        user->sendMessage(":server 366 " + user->getNickname() + " " + channel_name + " :End of /NAMES list");
+    }
 }
 
 void CommandHandler::handlePart(User* user, const std::vector<std::string>& args) {
@@ -279,23 +311,27 @@ void CommandHandler::handlePart(User* user, const std::vector<std::string>& args
         return;
     }
 
-    std::string channel_name = args[0];
-    Channel* channel = server.getChannel(channel_name);
-    if (!channel) {
-        user->sendMessage(":server 403 " + channel_name + " :No such channel");
-        return;
+    std::vector<std::string> channels = splitByComma(args[0]);
+
+    for (std::vector<std::string>::const_iterator it = channels.begin(); it != channels.end(); ++it) {
+        std::string channel_name = *it;
+        Channel* channel = server.getChannel(channel_name);
+        if (!channel) {
+            user->sendMessage(":server 403 " + channel_name + " :No such channel");
+            continue;
+        }
+
+        if (!channel->hasUser(user->getFd())) {
+            user->sendMessage(":server 442 " + channel_name + " :You're not on that channel");
+            continue;
+        }
+
+        std::string part_msg = ":" + user->getNickname() + " PART :" + channel_name;
+        channel->broadcast(user->getFd(), part_msg);
+
+        channel->removeUser(user->getFd());
+        user->leaveChannel(channel_name);
     }
-
-    if (!channel->hasUser(user->getFd())) {
-        user->sendMessage(":server 442 " + channel_name + " :You're not on that channel");
-        return;
-    }
-
-    std::string part_msg = ":" + user->getNickname() + " PART :" + channel_name;
-    channel->broadcast(user->getFd(), part_msg);
-
-    channel->removeUser(user->getFd());
-    user->leaveChannel(channel_name);
 }
 
 void CommandHandler::handlePrivmsg(User* user, const std::vector<std::string>& args) {
@@ -360,6 +396,10 @@ void CommandHandler::handleNotice(User* user, const std::vector<std::string>& ar
 
     std::string target = args[0];
     std::string message = args[1];
+    // Remove leading colon if present to prevent double colons
+    if (!message.empty() && message[0] == ':') {
+        message = message.substr(1);
+    }
 
     if (target[0] == '#' || target[0] == '&') {
         Channel* channel = server.getChannel(target);
@@ -383,6 +423,10 @@ void CommandHandler::handleNotice(User* user, const std::vector<std::string>& ar
 
 void CommandHandler::handleQuit(User* user, const std::vector<std::string>& args) {
     std::string reason = args.empty() ? "Client Quit" : args[0];
+    // Remove leading colon if present to prevent double colons
+    if (!reason.empty() && reason[0] == ':') {
+        reason = reason.substr(1);
+    }
     std::string quit_msg = ":" + user->getNickname() + " QUIT :" + reason;
 
     // Notify all channels the user is in
@@ -412,6 +456,10 @@ void CommandHandler::handleKick(User* user, const std::vector<std::string>& args
         reason = args[2];
         for (size_t i = 3; i < args.size(); ++i) {
             reason += " " + args[i];
+        }
+        // Remove leading colon if present to prevent double colons
+        if (!reason.empty() && reason[0] == ':') {
+            reason = reason.substr(1);
         }
     } else {
         reason = user->getNickname();
@@ -496,6 +544,7 @@ void CommandHandler::handleMode(User* user, const std::vector<std::string>& args
         // Handle mode changes
         std::string modes = args[1];
         bool adding = true;
+        bool hasPasswordMode = false;
 
         for (size_t i = 0; i < modes.length(); ++i) {
             if (modes[i] == '+') {
@@ -517,6 +566,7 @@ void CommandHandler::handleMode(User* user, const std::vector<std::string>& args
                     break;
 
                 case 'k': // Channel key
+                    hasPasswordMode = true;
                     if (adding) {
                         if (args.size() > 2) {
                             channel->setPassword(args[2]);
@@ -569,7 +619,8 @@ void CommandHandler::handleMode(User* user, const std::vector<std::string>& args
 
         // Broadcast mode change
         std::string mode_msg = ":" + user->getNickname() + " MODE " + target + " " + modes;
-        if (args.size() > 2) {
+        // Don't include password in broadcast for security reasons
+        if (args.size() > 2 && !hasPasswordMode) {
             mode_msg += " " + args[2];
         }
         channel->broadcast(0, mode_msg);
@@ -627,8 +678,18 @@ void CommandHandler::handleTopic(User* user, const std::vector<std::string>& arg
         return;
     }
 
+    // Enforce +t: only operators can set topic if topicRestricted is true
+    if (channel->isTopicRestricted() && !channel->isOperator(user->getFd())) {
+        user->sendMessage(":server 482 " + channel_name + " :You're not channel operator");
+        return;
+    }
+
     // Set new topic
     std::string new_topic = args[1];
+    // Remove leading colon if present to prevent double colons
+    if (!new_topic.empty() && new_topic[0] == ':') {
+        new_topic = new_topic.substr(1);
+    }
     channel->setTopic(new_topic);
 
     std::string topic_msg = ":" + user->getNickname() + " TOPIC " + channel_name + " :" + new_topic;
