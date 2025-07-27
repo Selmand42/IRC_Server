@@ -221,31 +221,24 @@ void Server::handleClientData(int client_fd) {
     buffer[bytes_read] = '\0';
     std::string received_data(buffer);
 
-    // Append received data to user's read buffer
     user->appendToReadBuffer(received_data);
 
-    // Process complete commands from the buffer
     std::string& readBuffer = user->getReadBuffer();
     size_t pos = 0;
     size_t newline_pos;
 
-    // Process all complete lines (ending with \r\n or \n)
     while ((newline_pos = readBuffer.find('\n', pos)) != std::string::npos) {
-        // Find the start of this line (after previous \r\n)
         size_t line_start = pos;
         if (line_start > 0 && readBuffer[line_start - 1] == '\r') {
             line_start--;
         }
 
-        // Extract the complete command line
         std::string command_line = readBuffer.substr(line_start, newline_pos - line_start);
 
-        // Remove \r if present at the end
         if (!command_line.empty() && command_line[command_line.length() - 1] == '\r') {
             command_line = command_line.substr(0, command_line.length() - 1);
         }
 
-        // Process the command if it's not empty
         if (!command_line.empty()) {
             try {
                 CommandHandler handler(*this);
@@ -257,12 +250,9 @@ void Server::handleClientData(int client_fd) {
 
         pos = newline_pos + 1;
     }
-
-    // Keep any incomplete data in the buffer
     if (pos < readBuffer.length()) {
         readBuffer = readBuffer.substr(pos);
     } else {
-        // All data was processed, clear the buffer
         user->clearReadBuffer();
     }
 }
@@ -275,7 +265,6 @@ void Server::removeUser(int fd) {
     std::map<int, User*>::iterator it = users.find(fd);
     if (it != users.end()) {
         if (it->second) {
-            // Clear read buffer to prevent memory leaks
             it->second->clearReadBuffer();
 
             std::set<std::string> channels = it->second->getCurrentChannels();
