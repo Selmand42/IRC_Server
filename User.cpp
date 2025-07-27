@@ -20,7 +20,7 @@ User::~User() {
     channels.clear();
 
     writeBuffer.clear();
-    readBuffer.clear();  // Clear read buffer
+    readBuffer.clear(); 
 }
 
 int User::getFd() const {
