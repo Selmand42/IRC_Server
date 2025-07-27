@@ -1,8 +1,8 @@
 NAME = ircserv
 
-FLAGS = -Wall -Wextra -Werror -std=c++98
+CXXFLAGS = -Wall -Wextra -Werror -std=c++98
 
-CPP = c++
+CXX = c++
 
 RM = rm -rf
 
@@ -11,7 +11,7 @@ SRCS = main.cpp Server.cpp User.cpp Channel.cpp CommandHandler.cpp
 all: $(NAME)
 
 $(NAME): $(SRCS)
-	$(CPP) $(FLAGS) $(SRCS) -o $(NAME)
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $(NAME)
 
 clean:
 	$(RM) $(NAME)

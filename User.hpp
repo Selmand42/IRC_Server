@@ -4,6 +4,10 @@
 #include <string>
 #include <set>
 #include <sys/socket.h>
+#include <cerrno>
+#include <cstring>
+#include <unistd.h>
+#include <iostream>
 
 class User {
 private:
@@ -21,12 +25,12 @@ private:
     bool restricted;
     bool server_notices;
     mutable std::string writeBuffer;
+    std::string readBuffer;
 
 public:
-    // Constructor
     User(int fd);
-    
-    // Getters
+    ~User();
+
     int getFd() const;
     const std::string& getNickname() const;
     const std::string& getUsername() const;
@@ -36,8 +40,10 @@ public:
     const std::set<std::string>& getCurrentChannels() const;
     std::string getModeFlags() const;
     std::string& getWriteBuffer() const;
+    std::string& getReadBuffer();
+    void clearReadBuffer();
+    void appendToReadBuffer(const std::string& data);
 
-    // Setters
     void setNickname(const std::string& nick);
     void setUsername(const std::string& user);
     void setRealname(const std::string& real);
@@ -45,21 +51,18 @@ public:
     void setAuthenticated(bool value);
     void setModeFlags(const std::string& modes);
 
-    // Channel operations
     void joinChannel(const std::string& channel);
     void leaveChannel(const std::string& channel);
     bool isInChannel(const std::string& channel_name) const;
 
-    // Message operations
     void sendMessage(const std::string& message) const;
 
-    // Mode management
     void setInvisible(bool value);
     void setOperator(bool value);
     void setWallops(bool value);
     void setRestricted(bool value);
     void setServerNotices(bool value);
-    
+
     bool isInvisible() const;
     bool isOperator() const;
     bool isWallops() const;
@@ -67,4 +70,4 @@ public:
     bool isServerNotices() const;
 };
 
-#endif // USER_HPP 
+#endif

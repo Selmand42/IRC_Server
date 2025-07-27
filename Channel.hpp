@@ -4,9 +4,13 @@
 #include <string>
 #include <set>
 #include <map>
+#include <sys/socket.h>
+#include <sstream>
+#include <cerrno>
+#include <iostream>
 
 class Channel {
-private:
+
     std::string name;
     std::string topic;
     std::set<int> users;
@@ -16,23 +20,21 @@ private:
     int userLimit;
     bool inviteOnly;
     bool topicRestricted;
-    std::string modeFlags;
 
 public:
     Channel(const std::string& name);
-    
-    // User management
+
     void addUser(int fd);
     void removeUser(int fd);
     bool hasUser(int fd) const;
     void addOperator(int fd);
     void removeOperator(int fd);
     bool isOperator(int fd) const;
+    bool isLastOperator(int fd) const;
     void addInvited(int fd);
     bool isInvited(int fd) const;
-    
-    // Channel modes
-    void setModeFlags(const std::string& modes);
+    void removeInvited(int fd);
+
     std::string getModeFlags() const;
     void setPassword(const std::string& pass);
     std::string getPassword() const;
@@ -42,16 +44,14 @@ public:
     bool isInviteOnly() const;
     void setTopicRestricted(bool value);
     bool isTopicRestricted() const;
-    
-    // Channel info
+
     std::string getName() const;
     void setTopic(const std::string& newTopic);
     std::string getTopic() const;
     const std::set<int>& getUsers() const;
     unsigned int getUserCount() const;
-    
-    // Message handling
-    void broadcast(int sender_fd, const std::string& message);
+
+    void broadcast(int sender_fd, const std::string& message, class Server* server = NULL);
 };
 
-#endif // CHANNEL_HPP 
+#endif

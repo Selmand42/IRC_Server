@@ -1,10 +1,7 @@
 #include "User.hpp"
-#include <sys/socket.h>
-#include <unistd.h>
-#include <iostream>
 
-User::User(int fd) : 
-    fd(fd), 
+User::User(int fd) :
+    fd(fd),
     registered(false),
     authenticated(false),
     invisible(false),
@@ -12,6 +9,18 @@ User::User(int fd) :
     wallops(false),
     restricted(false),
     server_notices(false) {
+}
+
+User::~User() {
+    if (fd > 0) {
+        close(fd);
+        fd = -1;
+    }
+
+    channels.clear();
+
+    writeBuffer.clear();
+    readBuffer.clear();  // Clear read buffer
 }
 
 int User::getFd() const {
@@ -75,7 +84,7 @@ void User::setModeFlags(const std::string& modes) {
             adding = false;
             continue;
         }
-        
+
         switch (modes[i]) {
             case 'i': setInvisible(adding); break;
             case 'o': setOperator(adding); break;
@@ -102,37 +111,34 @@ std::string& User::getWriteBuffer() const {
     return writeBuffer;
 }
 
+std::string& User::getReadBuffer() {
+    return readBuffer;
+}
+
+void User::clearReadBuffer() {
+    readBuffer.clear();
+}
+
+void User::appendToReadBuffer(const std::string& data) {
+    readBuffer += data;
+}
+
 void User::sendMessage(const std::string& message) const {
     if (fd > 0) {
-        // Allow server responses even when not registered
         if (message.substr(0, 7) == ":server") {
-            int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
-            if (bytes_sent < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    writeBuffer += message + "\r\n";
-                }
-            }
+            writeBuffer += message + "\r\n";
             return;
         }
 
         if (!registered) {
-            std::string error_msg = ":server 451 :You have not registered\r\n";
-            send(fd, error_msg.c_str(), error_msg.length(), 0);
+            writeBuffer += ":server 451 :You have not registered\r\n";
             return;
         }
         if (nickname.empty() || username.empty()) {
-            std::string error_msg = ":server 451 :You must set both nickname and username before sending messages\r\n";
-            send(fd, error_msg.c_str(), error_msg.length(), 0);
+            writeBuffer += ":server 451 :You must set both nickname and username before sending messages\r\n";
             return;
         }
-        // Try to send immediately
-        int bytes_sent = send(fd, (message + "\r\n").c_str(), message.length() + 2, 0);
-        if (bytes_sent < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                // If send would block, add to buffer
-                writeBuffer += message + "\r\n";
-            }
-        }
+        writeBuffer += message + "\r\n";
     }
 }
 
@@ -182,4 +188,4 @@ bool User::isAuthenticated() const {
 
 void User::setAuthenticated(bool value) {
     authenticated = value;
-} 
+}

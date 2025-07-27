@@ -1,14 +1,12 @@
 #include "Channel.hpp"
 #include "User.hpp"
-#include <sys/socket.h>
-#include <sstream>
+#include "Server.hpp"
 
-Channel::Channel(const std::string& name) : 
-    name(name), 
+Channel::Channel(const std::string& name) :
+    name(name),
     userLimit(0),
     inviteOnly(false),
-    topicRestricted(false),
-    modeFlags("") {
+    topicRestricted(false) {
 }
 
 std::string Channel::getName() const {
@@ -24,7 +22,10 @@ std::string Channel::getTopic() const {
 }
 
 std::string Channel::getModeFlags() const {
-    return modeFlags;
+    std::string flags = "+";
+    if (inviteOnly) flags += "i";
+    if (topicRestricted) flags += "t";
+    return flags;
 }
 
 std::string Channel::getPassword() const {
@@ -39,10 +40,6 @@ void Channel::setTopic(const std::string& new_topic) {
     topic = new_topic;
 }
 
-void Channel::setModeFlags(const std::string& modes) {
-    modeFlags = modes;
-}
-
 void Channel::setPassword(const std::string& pass) {
     password = pass;
 }
@@ -53,10 +50,8 @@ void Channel::setUserLimit(int limit) {
 
 void Channel::addUser(int fd) {
     users.insert(fd);
-    if (users.size() == 1) {
-        // First user becomes operator
+    if (users.size() == 1)
         addOperator(fd);
-    }
 }
 
 void Channel::removeUser(int fd) {
@@ -81,6 +76,10 @@ bool Channel::isOperator(int fd) const {
     return operators.find(fd) != operators.end();
 }
 
+bool Channel::isLastOperator(int fd) const {
+    return operators.size() == 1 && isOperator(fd);
+}
+
 void Channel::addInvited(int fd) {
     invited.insert(fd);
 }
@@ -89,11 +88,28 @@ bool Channel::isInvited(int fd) const {
     return invited.find(fd) != invited.end();
 }
 
-void Channel::broadcast(int sender_fd, const std::string& message) {
+void Channel::removeInvited(int fd) {
+    invited.erase(fd);
+}
+
+void Channel::broadcast(int sender_fd, const std::string& message, Server* server) {
     std::set<int>::iterator it;
     for (it = users.begin(); it != users.end(); ++it) {
-        if (*it != sender_fd) { // Don't send to the sender
-            send(*it, message.c_str(), message.length(), 0);
+        if (*it != sender_fd) {
+            if (*it > 0) {
+                if (server) {
+
+                    User* user = server->getUser(*it);
+                    if (user) {
+                        user->sendMessage(message);
+                    }
+                } else {
+
+                    int result = send(*it, (message + "\r\n").c_str(), message.length() + 2, MSG_NOSIGNAL);
+                    if (result < 0)
+                        std::cerr << "Error sending message to fd " << *it << ": " << strerror(errno) << std::endl;
+                }
+            }
         }
     }
 }
@@ -116,4 +132,4 @@ void Channel::setTopicRestricted(bool value) {
 
 bool Channel::isTopicRestricted() const {
     return topicRestricted;
-} 
+}
